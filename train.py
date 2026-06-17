@@ -208,7 +208,7 @@ class GeoPINOTrainer:
         o1 = self._opt_warmup()
         s1 = self._sched(o1, self.warm_ep, eta_min=1e-5)
 
-        log.info("Phase 1 - Warmup (data loss only))
+        log.info("Phase 1 - Warmup (data loss only)")
         for ep in range(1, self.warm_ep + 1):
             row = self._epoch(ep, loader, o1, phase=1, pino_ep_idx=0)
             s1.step()
