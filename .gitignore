@@ -226,3 +226,7 @@ output/*.vtu
 *.pkl
 output/*.png
 output/*.log
+output/*.pt
+output/*.vtu
+output/*.png
+output/*.log
