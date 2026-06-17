@@ -1,6 +1,6 @@
 # Aerodynamic Generalization Limits of Geometry-Adaptive Physics-Informed Neural Operators under Extreme Regime Shifts
 
-Official implementation of the Geometry-Adaptive Physics-Informed Neural Operator (Geo-PINO) framework. This repository contains the complete Science-Guided Machine Learning (SciML) pipeline designed to evaluate neural operator generalization boundaries and aerodynamic coefficient extrapolation under extreme Out-of-Distribution (OOD) regime shifts.
+Official Geo-PINO Framework Implementation. This GitHub repository includes the entire Science-Guided Machine Learning (SciML) pipeline that is implemented for determining the limits of neural operator generalizability and the extrapolation of aerodynamic coefficients in a highly OOD environment.
 
 ---
 
@@ -8,10 +8,10 @@ Official implementation of the Geometry-Adaptive Physics-Informed Neural Operato
 
 The core framework bypasses the limitations of standard Fourier Neural Operators (FNO) on unstructured grids by introducing a geometry-adaptive multi-stage mapping pipeline:
 
-1. Diffeomorphic Coordinate Mapping: A learnable grid deformation network (I_Phi) that transforms irregular boundary layer grids from physical space into a uniform, regularized canonical latent space.
-2. Fourier Neural Operator Backbone: A 2D FNO block executing spectral convolutions via Fast Fourier Transforms (FFT) on the regularized grid to model global fluid dynamics.
-3. Physics-Informed Constraints: Direct regularization during training using exact Automated Differentiation to compute incompressible Reynolds-Averaged Navier-Stokes (RANS) residuals.
-4. Epistemic Uncertainty Estimation: Monte Carlo Dropout layers integrated within the spectral blocks to quantify model confidence during extrapolation.
+1. Diffeomorphic Grid Mapping: Learnable network (I_ϕ) that warps the irregular grids of the boundary layer in the physical domain to be transformed into canonical latent regularized space.
+2. Neural Fourier Operator backbone: 2D FNO architecture that applies convolutional operations through Fast Fourier Transformations on the grid space for global fluid flow modeling.
+3. Physically-consistent constraints: Directly regularize model training through the application of exact Automatic Differentiation on incompressible RANS residuals.
+4. Uncertainty quantification: Incorporation of Monte-Carlo Dropout layers in the convolutional blocks for uncertainty quantification during inference phase.
 
 ---
 
@@ -19,26 +19,26 @@ The core framework bypasses the limitations of standard Fourier Neural Operators
 
 The codebase is strictly modularized into sequential Jupyter Notebooks. To reproduce the model pipeline and evaluation benchmarks, process the files in the following order:
 
-### 1. dataset.ipynb (Data Processing Pipeline)
-* Parses unstructured VTU mesh files from the fluid dynamics dataset using PyVista.
-* Generates exact Signed Distance Fields (SDF) to parameterize airfoil geometry boundaries.
-* Executes Delaunay barycentric interpolation to map scattered physical fields onto a uniform 241 x 241 Cartesian grid.
+### 1. dataset.ipynb (Data Preprocessing Pipeline)
+* Reads raw VTU mesh files from the fluid dynamics dataset and processes them using PyVista.
+* Constructs signed distance fields (SDFs) from exact coordinates defining airfoil shape boundaries.
+* Applies Delaunay barycentric interpolation for scattering of scattered physical fields to 241 x 241 regular Cartesian grid.
 
-### 2. models.ipynb (Network Architectures)
-* Implements the learnable coordinate warping layers for grid regularization.
-* Implements the FNO2d backbone with truncated low-frequency spectral weights.
-* Implements MC-Dropout layers for uncertainty mapping.
+### 2. models.ipynb (Model Architectures)
+* Designs learnable coordinate warping layers for grid regularization.
+* Designs the backbone for FNO2d with truncated low-frequency Fourier coefficients for weights.
+* Designs MC-Dropout layers for modeling uncertainties.
 
-### 3. train.ipynb (Physics-Informed Training Loop)
-* Implements a Two-Phase Curriculum training sequence: empirical data warmup followed by physical PDE regularization.
-* Formulates and backpropagates continuity and momentum RANS equations.
-* Integrates adaptive gradient-norm balancing via Exponential Moving Average (EMA) to prevent loss cancellation.
+### 3. train.ipynb (PDE Informed Training Routine)
+* Designs a Two-Phase Curriculum training regime: empirical data pretraining followed by physics PDE-based regularization.
+* Constructs equations for continuity and momentum RANS equations.
+* Designs gradient normalization using Exponential Moving Average (EMA) to avoid loss cancellation problem.
 
-### 4. evaluation.ipynb (OOD Benchmarking and Analysis)
-* Performs geometry-grouped validation splits using GroupShuffleSplit to enforce strict structural isolation.
-* Filters the test set to isolate extreme Out-of-Distribution flight regimes (high angles of attack).
-* Computes differentiable lift (Cl) and drag (Cd) forces using an SDF boundary mollifier.
-* Outputs absolute error fields for velocity and pressure components alongside Spearman rank correlation plots.
+### 4. evaluation.ipynb (OOD Evaluation Protocol)
+* Uses GroupShuffleSplit to split data into groups corresponding to geometrical structures to ensure structural isolation.
+* Filter OOD dataset for high AoA flight conditions.
+* Differentiates lift (Cl) and drag (Cd) forces using signed distance field (SDF) boundary mollifier.
+* Outputs absolute error fields for velocity and pressure and Spearman rank correlation plots.
 
 For the mathematical proofs, formal scaling derivations, and operational O-notation complexity charts, refer to THEORY.md.
 
