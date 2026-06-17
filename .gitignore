@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+#sharokku
+data/
+output/*.pt
+output/*.vtu
+*.pt
+*.pth
+*.pkl
+output/*.png
+output/*.log
