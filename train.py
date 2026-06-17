@@ -1,33 +1,5 @@
-"""
-train.py
-========
-Training entry point for Geo-PINO on the AirfRANS dataset.
-
-Usage::
-
-    python train.py --data_dir ./data/airfrans_prep --output_dir ./output
-
-Two-phase curriculum:
-
-Phase 1 — Warmup
-    Data loss only (``PerChannelRelL2LossWeighted``).
-    Optimiser: AdamW + CosineAnnealingLR.
-
-Phase 2 — Physics-Informed
-    Data loss + RANS residuals (continuity, momentum, soft-BC).
-    Physics weights are ramped in three stages:
-
-    1. **Freeze** (first ``freeze_epochs`` PINO epochs): ``w_physics = 0``.
-    2. **Ramp** (next ``ramp_epochs`` epochs): convex exponential schedule
-       ``w_i = w_max · (t / ramp)^γ``.
-    3. **Plateau**: Wang et al. 2021 EMA gradient-norm adaptive reweighting.
-
-    Optimiser: fresh AdamW + CosineAnnealingLR (no LR shock at phase boundary).
-    Gradient clipping: ``max_norm = 0.5`` to protect spectral layers.
-"""
-
+#sharokku
 from __future__ import annotations
-
 import argparse
 import glob
 import logging
@@ -36,7 +8,6 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -44,7 +15,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-
 from src.dataset import AirfransGridDataset, PerChannelNormalizer, run_preprocessing
 from src.losses import (
     PerChannelRelL2LossWeighted,
@@ -60,15 +30,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("geo_pino.train")
 
-
-# ---------------------------------------------------------------------------
 # Physics weight scheduling
-# ---------------------------------------------------------------------------
-
 @dataclass
 class PhysicsWeights:
-    """Named container for the four loss coefficients."""
-
     data: float = 1.0
     momentum: float = 0.0
     div: float = 0.0
@@ -76,34 +40,6 @@ class PhysicsWeights:
 
 
 class PhysicsWeightScheduler:
-    """
-    Three-stage curriculum for RANS physics loss weights.
-
-    **Stage 1 — Freeze** (``pino_epoch < freeze_epochs``):
-        All physics weights are zero.  The model is allowed to refine its
-        data-loss minimum before the stiff PDE gradients are introduced.
-
-    **Stage 2 — Ramp** (``freeze_epochs ≤ pino_epoch < freeze_epochs + ramp_epochs``):
-        Each weight follows ``w_i = w_max_i · (t / ramp)^γ`` where
-        ``t ∈ [0, 1]``.  A convex schedule (``γ = 2``) avoids a sharp
-        gradient spike at the ramp onset.
-
-    **Stage 3 — Plateau**:
-        Wang et al. 2021 EMA adaptive reweighting: each physics weight is
-        rescaled so that its gradient contribution matches the data gradient,
-        preventing any single term from dominating.
-
-    Args:
-        w_momentum_max: Maximum weight for the momentum residual.
-        w_div_max: Maximum weight for the continuity residual.
-        w_bc_max: Maximum weight for the soft no-slip penalty.
-        freeze_epochs: Number of zero-physics grace epochs at Phase 2 start.
-        ramp_epochs: Number of exponential ramp epochs after the freeze.
-        gamma: Convexity of the ramp schedule.
-        adaptive: Enable Wang-2021 EMA adaptive reweighting in Stage 3.
-        ema_alpha: EMA decay factor for gradient norm tracking.
-    """
-
     def __init__(
         self,
         w_momentum_max: float = 1e-4,
@@ -131,12 +67,6 @@ class PhysicsWeightScheduler:
         self._current = PhysicsWeights()
 
     def get(self, pino_epoch: int) -> PhysicsWeights:
-        """
-        Return physics weights for the given PINO-phase epoch (0-indexed).
-
-        Args:
-            pino_epoch: Epoch index counted from the start of Phase 2.
-        """
         w = PhysicsWeights(data=1.0)
         if pino_epoch < self.freeze:
             return w
@@ -147,16 +77,6 @@ class PhysicsWeightScheduler:
         return w
 
     def adaptive_update(self, grad_norms: Dict[str, float]) -> PhysicsWeights:
-        """
-        Wang et al. 2021: rescale physics weights so each contributes roughly
-        the same gradient magnitude as the data loss.
-
-        Args:
-            grad_norms: Dict mapping loss component names to gradient norm values.
-
-        Returns:
-            Updated :class:`PhysicsWeights`.
-        """
         if not self.adaptive:
             return self._current
         for k, v in grad_norms.items():
@@ -176,11 +96,7 @@ class PhysicsWeightScheduler:
         self._ema = d["ema"]
         self._current = PhysicsWeights(**d["current"])
 
-
-# ---------------------------------------------------------------------------
 # Loss computation
-# ---------------------------------------------------------------------------
-
 def compute_pino_loss(
     pred_enc: torch.Tensor,
     target: torch.Tensor,
@@ -192,28 +108,6 @@ def compute_pino_loss(
     phase: int,
     criterion: nn.Module,
 ) -> tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-    """
-    Compute the combined data + physics loss for one batch.
-
-    Physics terms are computed only in Phase 2 and only when at least one
-    weight is non-negligible (``> 1e-12``), so Phase 1 and the freeze period
-    add zero computational overhead.
-
-    Args:
-        pred_enc: Model output in normalised space ``[B, 4, H, W]``.
-        target: CFD ground truth in physical units ``[B, 4, H, W]``.
-        inp: Model input tensor ``[B, 4, H, W]`` (contains mask and SDF).
-        phys_coords: Physical coordinate grid ``[B, H, W, 2]``.
-        normaliser: :class:`~src.dataset.PerChannelNormalizer` instance.
-        weights: Current physics loss weights from :class:`PhysicsWeightScheduler`.
-        reynolds: Reynolds number.
-        phase: Training phase (1 = warmup, 2 = PINO).
-        criterion: Data loss module (e.g. :class:`~src.losses.PerChannelRelL2LossWeighted`).
-
-    Returns:
-        ``(total_loss, component_dict)`` where *component_dict* contains
-        ``data``, ``momentum``, ``div``, ``bc``, ``total``.
-    """
     mask = inp[:, 0:1]
     sdf = inp[:, 3:4]
 
@@ -249,45 +143,8 @@ def compute_pino_loss(
     comps["total"] = total
     return total, comps
 
-
-# ---------------------------------------------------------------------------
 # Trainer
-# ---------------------------------------------------------------------------
-
 class GeoPINOTrainer:
-    """
-    Curriculum trainer for Geo-PINO.
-
-    **Phase 1 — Warmup** (``epochs 1 … warmup_epochs``):
-        Data loss only.  CosineAnnealingLR scheduler, ``eta_min = 1e-5``.
-
-    **Phase 2 — Physics-Informed** (``epochs warmup+1 … total_epochs``):
-        Data + RANS physics via :class:`PhysicsWeightScheduler`.
-        Fresh AdamW optimiser (resets momentum state, avoids LR shock).
-        CosineAnnealingLR from ``lr_pino_start`` down to ``lr_pino_min``.
-        Gradient clipping at ``max_norm = grad_clip`` every step.
-
-    Args:
-        model: :class:`~src.models.GeoPINO` instance.
-        normaliser: Fitted :class:`~src.dataset.PerChannelNormalizer`.
-        lr_warmup: Peak learning rate for Phase 1.
-        lr_pino_start: Starting LR for Phase 2 (set well below ``lr_warmup``
-            end value to avoid a gradient shock).
-        lr_pino_min: Minimum LR for Phase 2 cosine schedule.
-        warmup_epochs: Number of Phase 1 epochs.
-        total_epochs: Total training epochs (Phase 1 + Phase 2).
-        weight_decay: AdamW weight decay.
-        reynolds: Reynolds number for RANS residuals.
-        w_momentum_max: Max weight for the momentum loss term.
-        w_div_max: Max weight for the continuity loss term.
-        w_bc_max: Max weight for the soft BC penalty.
-        freeze_epochs: Grace period at Phase 2 onset (zero physics weights).
-        ramp_epochs: Duration of the exponential ramp-up.
-        adaptive_w: Enable Wang-2021 EMA adaptive reweighting.
-        grad_clip: Gradient norm clipping threshold.
-        device: Compute device.
-    """
-
     def __init__(
         self,
         model: nn.Module,
@@ -333,16 +190,12 @@ class GeoPINOTrainer:
         )
         self.history: List[Dict] = []
 
-    # ------------------------------------------------------------------
     # Optimiser / scheduler factories
-    # ------------------------------------------------------------------
-
     def _opt_warmup(self) -> torch.optim.Optimizer:
         return torch.optim.AdamW(
             self.model.parameters(), lr=self.lr_w, weight_decay=self.wd)
 
     def _opt_pino(self) -> torch.optim.Optimizer:
-        """Fresh AdamW for Phase 2 — resets momentum, avoids LR shock."""
         return torch.optim.AdamW(
             self.model.parameters(), lr=self.lr_p_start, weight_decay=self.wd)
 
@@ -350,24 +203,12 @@ class GeoPINOTrainer:
         return torch.optim.lr_scheduler.CosineAnnealingLR(
             opt, T_max=t_max, eta_min=eta_min)
 
-    # ------------------------------------------------------------------
     # Public entry point
-    # ------------------------------------------------------------------
-
     def fit(self, loader: DataLoader) -> List[Dict]:
-        """
-        Run the full two-phase curriculum.
-
-        Args:
-            loader: Training :class:`~torch.utils.data.DataLoader`.
-
-        Returns:
-            Training history as a list of per-epoch metric dicts.
-        """
         o1 = self._opt_warmup()
         s1 = self._sched(o1, self.warm_ep, eta_min=1e-5)
 
-        log.info("═══ Phase 1 — Warmup (data loss only) ═══")
+        log.info("Phase 1 - Warmup (data loss only))
         for ep in range(1, self.warm_ep + 1):
             row = self._epoch(ep, loader, o1, phase=1, pino_ep_idx=0)
             s1.step()
@@ -378,7 +219,7 @@ class GeoPINOTrainer:
         o2 = self._opt_pino()
         s2 = self._sched(o2, self.pino_ep, eta_min=self.lr_p_min)
 
-        log.info("═══ Phase 2 — Physics-Informed training ═══")
+        log.info("Phase 2 - Physics-Informed training")
         log.info("    LR start  : %.1e", self.lr_p_start)
         log.info("    Grad clip : %.2f", self.grad_clip)
         log.info("    Freeze    : %d epochs  (w_physics = 0)", self.w_sched.freeze)
@@ -394,13 +235,10 @@ class GeoPINOTrainer:
             if ep % 5 == 0 or ep == self.warm_ep + 1:
                 self._log(ep, row)
 
-        log.info("Training complete ✓")
+        log.info("Training complete (!)")
         return self.history
 
-    # ------------------------------------------------------------------
     # Single epoch
-    # ------------------------------------------------------------------
-
     def _epoch(
         self,
         ep: int,
@@ -488,7 +326,6 @@ class GeoPINOTrainer:
                 row["lr"], row["samples_per_sec"])
 
     def checkpoint(self, path: str) -> None:
-        """Save model weights, normaliser statistics, and training history."""
         torch.save({
             "model_state": self.model.state_dict(),
             "norm_mean": self.norm.mean,
@@ -498,19 +335,8 @@ class GeoPINOTrainer:
         }, path)
         log.info("Checkpoint saved → %s", path)
 
-
-# ---------------------------------------------------------------------------
 # Training curves plot
-# ---------------------------------------------------------------------------
-
 def plot_training_curves(history: List[Dict], out_path: str) -> None:
-    """
-    Save a 3-panel diagnostic figure: loss, physics residuals, LR schedule.
-
-    Args:
-        history: Output of :meth:`GeoPINOTrainer.fit`.
-        out_path: Destination ``.png`` file path.
-    """
     ep_all = [r["epoch"] for r in history]
     dl = [r["data"] for r in history]
     tl = [r["total"] for r in history]
@@ -564,11 +390,7 @@ def plot_training_curves(history: List[Dict], out_path: str) -> None:
     plt.close()
     log.info("Training curves → %s", out_path)
 
-
-# ---------------------------------------------------------------------------
 # Argument parsing
-# ---------------------------------------------------------------------------
-
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         "geo_pino_train",
@@ -611,11 +433,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--num_workers", type=int, default=0)
     return p.parse_args(argv)
 
-
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
-
 def main() -> None:
     args = parse_args()
 
@@ -626,7 +444,7 @@ def main() -> None:
     os.makedirs(args.output_dir, exist_ok=True)
     log.info("Device: %s | Output: %s", device, args.output_dir)
 
-    # ── Optional preprocessing ────────────────────────────────────────────────
+    # Optional preprocessing
     if args.raw_dir is not None:
         vtu_files = sorted(glob.glob(
             os.path.join(args.raw_dir, "**", "internal.vtu"), recursive=True))
@@ -639,8 +457,8 @@ def main() -> None:
             run_preprocessing(vtu_files, args.data_dir,
                               max_n=args.samples, clean_old=False)
 
-    # ── Dataset ───────────────────────────────────────────────────────────────
-    log.info("=== [1/7] Dataset ===")
+    #Dataset
+    log.info("[1/7] Dataset")
     cache_dir = os.path.join(args.output_dir, f"bary_cache_{args.grid_size}")
     try:
         dset = AirfransGridDataset(
@@ -674,8 +492,8 @@ def main() -> None:
                        num_workers=args.num_workers, pin_memory=pin)
     log.info("Train=%d  Val=%d  steps/ep=%d", n_train, n_val, len(tr_ld))
 
-    # ── Normaliser ────────────────────────────────────────────────────────────
-    log.info("=== [2/7] PerChannelNormalizer ===")
+    #Normaliser
+    log.info("[2/7] PerChannelNormalizer")
     idx_sample = list(getattr(tr_ds, "indices", range(len(tr_ds))))[:64]
     tgt_tensors = [dset[i][1].unsqueeze(0) for i in idx_sample]
     all_tgt = torch.cat(tgt_tensors, dim=0)
@@ -699,8 +517,8 @@ def main() -> None:
     log.info("encode sanity: mean=%.4f  std=%.4f  max_abs=%.2f  (target: ≈0, ≈1, ≤5)",
              enc_check.mean(), enc_check.std(), enc_check.abs().max())
 
-    # ── Model ─────────────────────────────────────────────────────────────────
-    log.info("=== [3/7] GeoPINO model ===")
+    #Model
+    log.info("[3/7] GeoPINO model")
     model = GeoPINO(
         in_ch=4, out_ch=4,
         modes=args.modes, width=args.width,
@@ -722,8 +540,8 @@ def main() -> None:
     if l_rand.item() > 100:
         log.error("Initial loss > 100 — normaliser or data likely corrupted!")
 
-    # ── Training ──────────────────────────────────────────────────────────────
-    log.info("=== [4/7] Curriculum training ===")
+    #Training
+    log.info("[4/7] Curriculum training")
     trainer = GeoPINOTrainer(
         model=model, normaliser=norm,
         lr_warmup=args.lr, lr_pino_start=args.lr_pino_start,
@@ -736,8 +554,8 @@ def main() -> None:
     )
     history = trainer.fit(tr_ld)
 
-    # ── Validation ────────────────────────────────────────────────────────────
-    log.info("=== [5/7] Validation ===")
+    #Validation
+    log.info("[5/7] Validation")
     model.eval()
     val_losses: List[float] = []
     with torch.no_grad():
@@ -750,13 +568,13 @@ def main() -> None:
     log.info("Best train RelL2 : %.5f", best_l2)
     log.info("Val   RelL2      : %.5f", val_l2)
 
-    # ── Checkpoint ────────────────────────────────────────────────────────────
-    log.info("=== [6/7] Checkpoint ===")
+    #Checkpoint
+    log.info("[6/7] Checkpoint")
     ckpt_path = os.path.join(args.output_dir, "geo_pino.pt")
     trainer.checkpoint(ckpt_path)
 
-    # ── Training curves ───────────────────────────────────────────────────────
-    log.info("=== [7/7] Training curves ===")
+    #Training curves
+    log.info("[7/7] Training curves")
     plot_training_curves(
         history,
         out_path=os.path.join(args.output_dir, "training_curves.png"),
