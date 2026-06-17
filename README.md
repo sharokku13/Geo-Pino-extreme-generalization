@@ -20,25 +20,25 @@ The core framework bypasses the limitations of standard Fourier Neural Operators
 The codebase is strictly modularized into sequential Jupyter Notebooks. To reproduce the model pipeline and evaluation benchmarks, process the files in the following order:
 
 ### 1. dataset.ipynb (Data Preprocessing Pipeline)
-* Reads raw VTU mesh files from the fluid dynamics dataset and processes them using PyVista.
-* Constructs signed distance fields (SDFs) from exact coordinates defining airfoil shape boundaries.
-* Applies Delaunay barycentric interpolation for scattering of scattered physical fields to 241 x 241 regular Cartesian grid.
+1. Reads raw VTU mesh files from the fluid dynamics dataset and processes them using PyVista.
+2. Constructs signed distance fields (SDFs) from exact coordinates defining airfoil shape boundaries.
+3. Applies Delaunay barycentric interpolation for scattering of scattered physical fields to 241 x 241 regular Cartesian grid.
 
 ### 2. models.ipynb (Model Architectures)
-* Designs learnable coordinate warping layers for grid regularization.
-* Designs the backbone for FNO2d with truncated low-frequency Fourier coefficients for weights.
-* Designs MC-Dropout layers for modeling uncertainties.
+1. Designs learnable coordinate warping layers for grid regularization.
+2. Designs the backbone for FNO2d with truncated low-frequency Fourier coefficients for weights.
+3. Designs MC-Dropout layers for modeling uncertainties.
 
 ### 3. train.ipynb (PDE Informed Training Routine)
-* Designs a Two-Phase Curriculum training regime: empirical data pretraining followed by physics PDE-based regularization.
-* Constructs equations for continuity and momentum RANS equations.
-* Designs gradient normalization using Exponential Moving Average (EMA) to avoid loss cancellation problem.
+1. Designs a Two-Phase Curriculum training regime: empirical data pretraining followed by physics PDE-based regularization.
+2. Constructs equations for continuity and momentum RANS equations.
+3. Designs gradient normalization using Exponential Moving Average (EMA) to avoid loss cancellation problem.
 
 ### 4. evaluation.ipynb (OOD Evaluation Protocol)
-* Uses GroupShuffleSplit to split data into groups corresponding to geometrical structures to ensure structural isolation.
-* Filter OOD dataset for high AoA flight conditions.
-* Differentiates lift (Cl) and drag (Cd) forces using signed distance field (SDF) boundary mollifier.
-* Outputs absolute error fields for velocity and pressure and Spearman rank correlation plots.
+1. Uses GroupShuffleSplit to split data into groups corresponding to geometrical structures to ensure structural isolation.
+2. Filter OOD dataset for high AoA flight conditions.
+3. Differentiates lift (Cl) and drag (Cd) forces using signed distance field (SDF) boundary mollifier.
+4. Outputs absolute error fields for velocity and pressure and Spearman rank correlation plots.
 
 For the mathematical proofs, formal scaling derivations, and operational O-notation complexity charts, refer to THEORY.md.
 
@@ -47,9 +47,9 @@ For the mathematical proofs, formal scaling derivations, and operational O-notat
 ## Metrics and Deliverables
 
 Running the complete pipeline yields the following validation components saved directly to the output directory:
-* Aerodynamic coefficient predictions comparing predicted vs. ground-truth lift and drag profiles.
-* Field-wise absolute error visualizations for velocity (Ux, Uy) and pressure (P) fields.
-* Epistemic uncertainty variance maps matching high-error flow separation zones.
+1. Aerodynamic coefficient predictions comparing predicted vs. ground-truth lift and drag profiles.
+2. Field-wise absolute error visualizations for velocity (Ux, Uy) and pressure (P) fields.
+3. Epistemic uncertainty variance maps matching high-error flow separation zones.
 
 ---
 
