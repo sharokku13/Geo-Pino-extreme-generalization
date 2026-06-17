@@ -1,18 +1,5 @@
-"""
-src/dataset.py
-==============
-AirfRANS dataset loading pipeline for Geo-PINO.
-
-Covers:
-  - VTU → NPZ preprocessing via pyvista (with scipy-IDW fallback)
-  - Signed Distance Function (SDF) generation from binary masks
-  - Delaunay-cached barycentric interpolation to a regular grid
-  - AirfransGridDataset: unstructured mesh → regular [H, W] tensors
-  - PerChannelNormalizer: per-channel Z-score with outlier clipping
-"""
-
+#sharokku
 from __future__ import annotations
-
 import glob
 import hashlib
 import logging
@@ -33,13 +20,8 @@ from torch.utils.data import Dataset
 
 log = logging.getLogger("geo_pino.dataset")
 
-# ---------------------------------------------------------------------------
 # Domain configuration
-# ---------------------------------------------------------------------------
-
 class DomainConfig:
-    """Physical domain bounds and grid resolution (chord-normalised units)."""
-
     X0: float = -0.5
     X1: float = 1.5
     Y0: float = -0.5
@@ -50,27 +32,10 @@ class DomainConfig:
 
 DOMAIN = DomainConfig()
 
-
-# ---------------------------------------------------------------------------
 # SDF helpers
-# ---------------------------------------------------------------------------
-
 def sdf_from_mask(mask_hw: np.ndarray,
                   x0: float = DOMAIN.X0, x1: float = DOMAIN.X1,
                   y0: float = DOMAIN.Y0, y1: float = DOMAIN.Y1) -> np.ndarray:
-    """
-    Compute a signed distance function from a binary body mask.
-
-    Uses Euclidean Distance Transform (EDT).  Positive values are in the
-    fluid domain; negative values are inside the body.
-
-    Args:
-        mask_hw: Binary array [H, W], 1 = body, 0 = fluid.
-        x0, x1, y0, y1: Physical domain extents (used to compute spacing).
-
-    Returns:
-        SDF array [H, W], dtype float32.
-    """
     H, W = mask_hw.shape
     dx = (x1 - x0) / max(W - 1, 1)
     dy = (y1 - y0) / max(H - 1, 1)
@@ -81,19 +46,8 @@ def sdf_from_mask(mask_hw: np.ndarray,
     return (d_out - d_in).astype(np.float32)
 
 
-# ---------------------------------------------------------------------------
 # VTU → NPZ preprocessing
-# ---------------------------------------------------------------------------
-
 def _inlet_from_folder(vtu_path: str) -> Tuple[float, float]:
-    """
-    Parse inlet velocity components from the AirfRANS folder naming convention.
-
-    Expected pattern: ``airFoil2D_SST_{alpha}_{Ux}_{Uy}_...``
-
-    Returns:
-        (Ux_in, Uy_in) as floats; defaults to (1.0, 0.0) on parse failure.
-    """
     parts = Path(vtu_path).parent.name.split("_")
     try:
         return float(parts[3]), float(parts[4])
@@ -102,13 +56,6 @@ def _inlet_from_folder(vtu_path: str) -> Tuple[float, float]:
 
 
 def _pv_get_field(point_data, candidates: List[str]) -> Optional[np.ndarray]:
-    """
-    Safely retrieve a named field from pyvista point_data.
-
-    Iterates ``candidates`` in order and returns the first non-empty array,
-    or ``None`` if nothing is found.  Using explicit ``None`` checks avoids
-    the ``ValueError: truth value of array is ambiguous`` trap.
-    """
     for name in candidates:
         if name in point_data:
             arr = np.asarray(point_data[name], dtype=np.float32)
@@ -123,18 +70,6 @@ def _probe_pyvista(
     yl: np.ndarray,
     z_probe: float,
 ) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
-    """
-    Probe an unstructured pyvista mesh at a regular (xl × yl) grid.
-
-    Args:
-        mesh: pyvista UnstructuredGrid.
-        xl, yl: 1-D coordinate arrays for the probe grid.
-        z_probe: Z-coordinate for the probe plane (mid-extrusion for 2-D meshes).
-
-    Returns:
-        ``(ux, uy, p, nut, nan_mask)`` flat arrays of length ``len(xl)*len(yl)``,
-        or ``None`` if pyvista is unavailable or returns all-zero velocity.
-    """
     try:
         import pyvista as pv
     except ImportError:
@@ -180,20 +115,6 @@ def _probe_scipy_idw(
     p_p: np.ndarray, nt_p: np.ndarray,
     xl: np.ndarray, yl: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Inverse-distance weighted (IDW) interpolation fallback using scipy.
-
-    Used when pyvista is unavailable or produces invalid output.
-
-    Args:
-        pts_2d: Source mesh 2-D point coordinates [N, 2].
-        ux_p, uy_p, p_p, nt_p: Field values at source points [N].
-        xl, yl: 1-D target grid coordinate arrays.
-
-    Returns:
-        ``(ux, uy, p, nut, nan_mask)`` on the regular grid, each of
-        length ``len(xl) * len(yl)``.
-    """
     xx, yy = np.meshgrid(xl, yl, indexing="ij")
     grid_xy = np.column_stack([xx.ravel(), yy.ravel()])
 
@@ -219,21 +140,6 @@ def _probe_scipy_idw(
 
 
 def vtu_to_npz(vtu_path: str, out_npz: str) -> Tuple[bool, str]:
-    """
-    Convert a single AirfRANS VTU simulation file to a preprocessed NPZ.
-
-    The NPZ contains fields on a regular ``DOMAIN.GRID × DOMAIN.GRID`` grid:
-    ``ux``, ``uy``, ``pressure``, ``nut``, ``mask``, ``sdf``,
-    ``inlet_velocity``, ``domain_bounds``.
-
-    Args:
-        vtu_path: Path to the source ``internal.vtu`` file.
-        out_npz: Destination ``.npz`` file path.
-
-    Returns:
-        ``(success, info_string)`` where *info_string* describes the result
-        or the error message on failure.
-    """
     try:
         import pyvista as pv
     except ImportError:
@@ -330,18 +236,6 @@ def run_preprocessing(
     max_n: Optional[int] = None,
     clean_old: bool = False,
 ) -> int:
-    """
-    Batch-convert VTU simulation files to preprocessed NPZ grids.
-
-    Args:
-        vtu_files: List of ``internal.vtu`` file paths.
-        out_dir: Output directory for NPZ files.
-        max_n: Maximum number of files to process (``None`` = all).
-        clean_old: If ``True``, delete and recreate ``out_dir`` before processing.
-
-    Returns:
-        Total number of ready NPZ files in ``out_dir`` after processing.
-    """
     if clean_old and os.path.exists(out_dir):
         log.info("Cleaning existing output directory: %s", out_dir)
         shutil.rmtree(out_dir)
@@ -377,28 +271,11 @@ def run_preprocessing(
     return total
 
 
-# ---------------------------------------------------------------------------
 # Barycentric interpolation helpers (Delaunay-cached)
-# ---------------------------------------------------------------------------
-
 def build_bary_weights(
     pts_2d: np.ndarray,
     target_xy: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Build Delaunay triangulation once and compute barycentric weights.
-
-    Points outside the convex hull of ``pts_2d`` are assigned to their
-    nearest neighbour (weight = 1.0 on that vertex).
-
-    Args:
-        pts_2d: Source point cloud [N, 2].
-        target_xy: Regular grid query points [M, 2].
-
-    Returns:
-        ``(vertices [M, 3], weights [M, 3])`` — integer vertex indices and
-        float barycentric weights that satisfy ``weights.sum(axis=1) == 1``.
-    """
     tri = Delaunay(pts_2d)
     simplex = tri.find_simplex(target_xy)
     M = len(target_xy)
@@ -433,51 +310,13 @@ def apply_bary(
     vertices: np.ndarray,
     weights: np.ndarray,
 ) -> np.ndarray:
-    """
-    Apply precomputed barycentric weights in O(M) — no triangulation rebuild.
-
-    Args:
-        values: Field values at source vertices [N] or [N, C].
-        vertices: Vertex index triples [M, 3].
-        weights: Barycentric weight triples [M, 3].
-
-    Returns:
-        Interpolated values at target points [M] or [M, C].
-    """
     if values.ndim == 1:
         return (values[vertices] * weights).sum(axis=1)
     return (values[vertices] * weights[:, :, np.newaxis]).sum(axis=1)
 
 
-# ---------------------------------------------------------------------------
 # Dataset
-# ---------------------------------------------------------------------------
-
 class AirfransGridDataset(Dataset):
-    """
-    AirfRANS unstructured mesh dataset mapped to a regular H × W grid.
-
-    Supported input formats:
-      - ``.npz`` (preprocessed by :func:`run_preprocessing`)  — fastest path
-      - ``.pt``  (PyTorch Geometric graph files)
-      - Synthetic fallback for smoke-tests (``allow_synthetic=True``)
-
-    Each sample returns a 3-tuple:
-      ``inp``  [4, H, W]  — (mask, Ux_bc, Uy_bc, SDF)  boundary conditions
-      ``tgt``  [4, H, W]  — (Ux, Uy, P, nut)           CFD solution fields
-      ``pc``   [H, W, 2]  — physical coordinates (shared, read-only)
-
-    Args:
-        root_dir: Directory containing preprocessed ``.npz`` or ``.pt`` files.
-        grid_size: Resolution of the output regular grid (H = W = grid_size).
-        num_samples: Maximum number of samples to load (``None`` = all).
-        cache_dir: Directory for Delaunay barycentric weight cache files.
-            Defaults to ``<root_dir>/../airfrans_bary_<grid_size>``.
-        allow_synthetic: Generate synthetic data when no real files are found.
-        vel_thresh: Fractional velocity threshold for airfoil mask detection
-            when processing raw point-cloud formats.
-    """
-
     X_MIN, X_MAX = DOMAIN.X0, DOMAIN.X1
     Y_MIN, Y_MAX = DOMAIN.Y0, DOMAIN.Y1
 
@@ -516,10 +355,7 @@ class AirfransGridDataset(Dataset):
         log.info("Dataset: %d samples | %d bary-cached | cache=%s",
                  len(self._records), n_cached, self.cache_dir)
 
-    # ------------------------------------------------------------------
     # Indexing
-    # ------------------------------------------------------------------
-
     def _index(self, root_dir: str, num_samples: Optional[int]) -> List[Dict]:
         if not os.path.exists(root_dir):
             if not self.allow_synthetic:
@@ -556,10 +392,8 @@ class AirfransGridDataset(Dataset):
     def __len__(self) -> int:
         return len(self._records)
 
-    # ------------------------------------------------------------------
+  
     # Barycentric cache
-    # ------------------------------------------------------------------
-
     def _bary_path(self, rec: Dict) -> str:
         key = (hashlib.md5(rec["fpath"].encode()).hexdigest()[:12]
                if rec["fpath"] else rec["name"])
@@ -577,10 +411,7 @@ class AirfransGridDataset(Dataset):
         np.savez_compressed(bpath, vertices=verts, weights=wts)
         return verts, wts
 
-    # ------------------------------------------------------------------
     # Raw loaders
-    # ------------------------------------------------------------------
-
     def _load_pt(self, fpath: str) -> Dict:
         """Load a PyTorch Geometric ``.pt`` graph file."""
         d = torch.load(fpath, map_location="cpu", weights_only=False)
@@ -613,12 +444,6 @@ class AirfransGridDataset(Dataset):
                     ux_in=ux_in, uy_in=uy_in)
 
     def _load_npz(self, fpath: str) -> Dict:
-        """
-        Load a preprocessed ``.npz`` file.
-
-        Supports both the regular-grid format (produced by :func:`run_preprocessing`)
-        and legacy raw point-cloud NPZ files.
-        """
         d = np.load(fpath, allow_pickle=True)
 
         # Regular-grid format (fast path)
@@ -659,7 +484,6 @@ class AirfransGridDataset(Dataset):
                     ux_in=float(iv[0]), uy_in=float(iv[1]))
 
     def _synthetic(self, seed: int) -> Dict:
-        """Generate a synthetic airfoil-like sample for smoke-tests."""
         rng = np.random.default_rng(seed=seed + 42)
         H, W = self.grid_size, self.grid_size
         xl = np.linspace(self.X_MIN, self.X_MAX, W)
@@ -681,14 +505,10 @@ class AirfransGridDataset(Dataset):
         return dict(pos=pos, ux=ux, uy=uy, p=p, nt=nt,
                     ux_in=math.cos(a), uy_in=math.sin(a))
 
-    # ------------------------------------------------------------------
     # Grid interpolation
-    # ------------------------------------------------------------------
-
     def _to_grid(
         self, rec: Dict, raw: Dict
     ) -> Tuple[np.ndarray, np.ndarray, float, float]:
-        """Interpolate a raw point-cloud sample to the regular grid."""
         pos = raw["pos"].astype(np.float64)
         verts, wts = self._get_bary(rec, pos)
 
@@ -707,10 +527,6 @@ class AirfransGridDataset(Dataset):
 
         return grid_4ch, mask_hw, raw["ux_in"], raw["uy_in"]
 
-    # ------------------------------------------------------------------
-    # __getitem__
-    # ------------------------------------------------------------------
-
     def __getitem__(
         self, idx: int
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -723,7 +539,7 @@ class AirfransGridDataset(Dataset):
         else:
             raw = self._synthetic(rec["seed"])
 
-        # Fast path: already a preprocessed regular grid
+        # Fast path
         if raw.get("is_grid"):
             return (
                 torch.from_numpy(raw["inp"]),
@@ -731,7 +547,7 @@ class AirfransGridDataset(Dataset):
                 self.target_coords.clone(),
             )
 
-        # Slow path: interpolate from point cloud
+        # Slow path
         grid_4ch, mask_hw, ux_in, uy_in = self._to_grid(rec, raw)
         sdf_hw = sdf_from_mask(mask_hw, self.X_MIN, self.X_MAX,
                                 self.Y_MIN, self.Y_MAX)
@@ -747,28 +563,8 @@ class AirfransGridDataset(Dataset):
         )
 
 
-# ---------------------------------------------------------------------------
 # Normalizer
-# ---------------------------------------------------------------------------
-
 class PerChannelNormalizer:
-    """
-    Per-channel Z-score normalisation with outlier clipping.
-
-    Statistics are computed over the full spatial extent of all provided
-    samples to avoid batch-size sensitivity.  Values are clipped to
-    ``[-clip, clip]`` after standardisation to prevent numerical blow-up
-    when any channel has near-zero variance (e.g. a constant turbulent
-    viscosity field in synthetic data).
-
-    Args:
-        data: Target field tensor [N, C, H, W].
-        eps: Minimum standard deviation (prevents division by zero).
-        clip: Symmetric clip range applied after standardisation.
-
-    Channel layout (AirfRANS): ``[Ux, Uy, P, nut]``
-    """
-
     CH_NAMES = ["Ux", "Uy", "P", "nut"]
 
     def __init__(
@@ -798,13 +594,11 @@ class PerChannelNormalizer:
         return (1, -1, 1, 1) if x.dim() == 4 else (-1, 1, 1)
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
-        """Standardise ``x`` to zero mean, unit variance, then clip."""
         mu = self.mean.to(x.device).view(self._view(x))
         sigma = self.std.to(x.device).view(self._view(x))
         return ((x - mu) / sigma).clamp(-self.clip, self.clip)
 
     def decode(self, x: torch.Tensor) -> torch.Tensor:
-        """Reverse the standardisation to recover physical units."""
         mu = self.mean.to(x.device).view(self._view(x))
         sigma = self.std.to(x.device).view(self._view(x))
         return x * sigma + mu
