@@ -10,10 +10,10 @@ The architecture processes data through three sequential spatial transformations
 
 1. **Physical Domain ($\Omega$):** The input tensor $X \in \mathbb{R}^{N \times d}$ contains $d$ features (including spatial coordinates, geometry representations, angle of attack $\alpha$, and Reynolds number $Re$) sampled across $N$ nodes of an irregular mesh.
 2. **Diffeomorphic Mapping ($\phi^{-1}$):** A coordinate-mapping multilayer perceptron (MLP) projects the irregular physical nodes into a structured, uniform latent space (parameterized as a two-dimensional torus $\mathbb{T}^2$) of resolution $H \times W$. This operation yields the latent tensor $V_0 \in \mathbb{R}^{H \times W \times d_v}$, where $d_v$ denotes the latent dimensionality.
-3. **Spectral Operator ($\mathcal{G}_\theta$):** The Fourier Neural Operator (FNO) layer applies a 2D Fast Fourier Transform (FFT) to the latent tensor, truncates higher frequency modes to retain only the lowest modes ($|k| \le k_{max}$), multiplies them by a parameterized complex weight tensor $R_\phi$, and projects them back via an inverse 2D FFT (iFFT). Concurrently, a local linear path ($1 \times 1$ convolution) preserves local features. The combined outputs are summed and passed through a non-linear activation function (GELU):
+3. **Spectral Operator ($\mathcal{G}_\theta$):** The Fourier Neural Operator (FNO) layer applies a 2D Fast Fourier Transform (FFT) to the latent tensor, truncates higher frequency modes to retain only the lowest modes ($|k| \le k_{\text{max}}$), multiplies them by a parameterized complex weight tensor $R_\phi$, and projects them back via an inverse 2D FFT (iFFT). Concurrently, a local linear path ($1 \times 1$ convolution) preserves local features. The combined outputs are summed and passed through a non-linear activation function (GELU):
 
 $$
-V_{out} = \sigma(V_{spec} + V_{lin} + b)
+V_{\text{out}} = \sigma(V_{\text{spec}} + V_{\text{lin}} + b)
 $$
 
 4. **Inverse Physical Mapping:** Using the inverse transformation, the predicted latent fields are interpolated back onto the original $N$ nodes of the irregular physical mesh, outputting the continuous fields ($U_x, U_y, P$) along with the integrated aerodynamic lift ($C_L$) and drag ($C_D$) coefficients.
