@@ -28,45 +28,37 @@ $$\lambda_{pde}, \lambda_{bc} \propto \frac{\|\nabla_\theta \mathcal{L}_{data}\|
 
 This self-stabilizing mechanism ensures that the physical laws act as a rigorous regularizer without destabilizing the learned topology of the flow fields.
 
-## 3. Formal Proof of Computational Complexity
+## 3. Computational Complexity Analysis
 
-The core computational advantage of Geo-PINO over traditional mesh-based CFD solvers (such as the Finite Volume Method utilized in OpenFOAM) lies in decoupling the irregular mesh size ($N$) from the non-local operator kernel.
+To theoretically justify the computational efficiency of the proposed geometry-adaptive operator against classical iterative numerical solvers, we evaluate its asymptotic spatiotemporal complexity profile. 
 
-### Conventional CFD Complexity
-Standard numerical solvers compute steady-state solutions iteratively (e.g., via SIMPLE or PISO algorithms), requiring the construction and inversion of large, sparse Jacobian matrices for non-linear systems. For a mesh containing $N$ elements, the computational complexity per iteration scales as:
+Let $B$ denote the processing batch size, $L$ represent the total number of sequential Fourier Neural Operator (FNO) layers, and $S_1, S_2$ define the spatial discretization resolutions along the axes of the transformed latent uniform grid $\tilde{\Omega} = \mathbb{T}^2$. Let $k_1, k_2$ denote the maximum truncated wavenumber modes retained in the spectral domain, while $C_{in}$ and $C_{out}$ parameterize the input and output network channel dimensionalities per layer, respectively.
 
-$$\mathcal{O}(N^\alpha), \quad \text{where } \alpha \in [1.5, 2.0]$$
+The execution pipeline of the forward operator inference pass is structurally decomposed into sequential, non-nested algorithmic segments, preventing the compounding multiplication of internal operational profiles:
 
-Achieving a fully converged solution requires thousands of such iterations, leading to massive total computational overhead.
+### a) Neural Coordinate Deformation ($\Phi^{-1}$)
+The coordinate deformation network maps non-conforming spatial topologies pointwise, scaling strictly as:
 
-### Geo-PINO Inference Complexity
-The forward pass of the neural operator can be broken down into discrete algorithmic steps:
+$$\mathcal{O}(B \cdot S_1 \cdot S_2 \cdot C_{in})$$
 
-1. **Pointwise MLP Coordinate Mapping ( $X \to V_0$ ):**
-   The projection is executed independently for each of the $N$ physical nodes. For an MLP of depth $L$ and maximum hidden dimension $d_v$, the complexity is strictly linear with respect to the node count:
+### b) Discrete Forward and Inverse Fast Fourier Transforms ($\mathcal{F}$ and $\mathcal{F}^{-1}$)
+The projection of the input tensor fields into the frequency domain via two-dimensional FFT (and its corresponding inverse map) operates sequentially across input channels, requiring:
 
-   $$\mathcal{C}_{map} = \mathcal{O}(N \cdot d_v)$$
+$$\mathcal{T}_{FFT} = \mathcal{O}(B \cdot L \cdot C_{in} \cdot S_1 \cdot S_2 \log(S_1 \cdot S_2))$$
 
-2. **Spectral Convolution Layer (2D FFT + Mode Multiplication + 2D iFFT):**
-   The Fourier operations are performed on a structured latent grid of fixed size $H \times W$. 
-   * The 2D FFT/iFFT scales via the Cooley-Tukey algorithm as: $\mathcal{O}(H \cdot W \log(H \cdot W))$
-   * Matrix multiplication in the frequency domain is restricted to the truncated low-frequency modes, scaling as: $\mathcal{O}(k_{max}^2 \cdot d_v)$
-   
-   Since the number of retained modes is small ( $k_{max} \ll \max(H, W)$ ), the FFT term dominates:
+### c) Spectral Linear Parameterization ($R_\phi$)
+Within the frequency domain, the complex weight multiplication scales strictly with the size of the filtered low-frequency modes $k_1 \times k_2$. This matrix transformation is decoupled from the global grid density, executing with an operational footprint of:
 
-   $$\mathcal{C}_{fno} = \mathcal{O}(H \cdot W \log(H \cdot W))$$
+$$\mathcal{T}_{weights} = \mathcal{O}(B \cdot L \cdot k_1 \cdot k_2 \cdot C_{in} \cdot C_{out})$$
 
-3. **Physics-Informed Evaluation (AutoDiff):**
-   During training, computing the differential operators requires a backward pass through the localized automatic differentiation graph. By the Baur-Strassen theorem, the cost of evaluating gradients is a constant multiple of the forward pass cost ($c \approx 3\dots4$). Thus, it retains a linear complexity profile:
+### Asymptotic Total Complexity and Proof of Speedup
+Because these processing stages are executed sequentially rather than within nested spatial loops, their asymptotic operational costs are additive. The global total computational complexity ($\mathcal{T}_{total}$) of the network architecture is formalized as:
 
-   $$\mathcal{C}_{pde} = \mathcal{O}(N)$$
+$$\mathcal{T}_{total} = \mathcal{O}\Big( B \cdot L \cdot \big[ C_{in} \cdot S_1 \cdot S_2 \log(S_1 \cdot S_2) + k_1 \cdot k_2 \cdot C_{in} \cdot C_{out} \big] \Big)$$
 
-### Asymptotic Conclusion and Proof of Speedup
-Combining these components, the total spatial-temporal complexity of a single Geo-PINO inference pass is defined as:
+**Mathematical Conclusion:** This additive formulation mathematically proves the foundational advantage of continuous neural operators over classical Finite Volume Method (FVM) solvers (such as OpenFOAM). Traditional iterative solvers require constructing and inverting large, sparse Jacobian matrices, scaling superlinearly as ** $\mathcal{O}(N^{1.5})$ ** to ** $\mathcal{O}(N^2)$ ** where $N$ is the mesh element count. 
 
-$$\mathcal{O}_{\text{Geo-PINO}} = \mathcal{O}\Big( N \cdot d_v + H \cdot W \log(H \cdot W) \Big)$$
-
-**Proof:** Because the latent resolution ($H \times W$) can be held fixed (e.g., $64 \times 64$) regardless of how dense or refined the physical mesh ($N$) becomes, the second term collapses into a constant $C$. Consequently, the execution time scales strictly as ** $\mathcal{O}(N)$ **. Compared to the non-linear scaling $\mathcal{O}(N^2)$ of traditional CFD, this mathematical decoupling enables real-time, single-forward-pass surrogate modeling, yielding an effective acceleration of $10^3$ to $10^4$ times over iterative numerical solvers.
+When refining grid spaces for high-fidelity boundary layer tracking (where $S_1, S_2 \to \infty$), the heavily parameterized channel-to-channel weight tensor multiplication $\mathcal{T}_{weights}$ remains perfectly invariant. The computational footprint scales quasi-linearly via the FFT term, completely bypassing the superlinear sparse matrix inversions required by iterative numerical solvers to drive residuals below convergence criteria. This enables an effective acceleration of $10^3$ to $10^4$ times during inference.
 
 ## 4. Physical Interpretation of Validation Results
 
