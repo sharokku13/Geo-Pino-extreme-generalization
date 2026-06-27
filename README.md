@@ -14,20 +14,6 @@
 * **Performance:** Achieves a massive deterministic acceleration factor over single-core FVM solvers (4.80 ms inference latency per spatial configuration) while enforcing physical mass and momentum conservation laws via exact automatic differentiation.
 
 ---
-## Framework Architecture
-The data-driven learning and structural PDE optimization pipeline is organized as follows:
-[ Irregular Physical Mesh ] 
-            │
-            ▼  (Diffeomorphic Mapping Φ⁻¹)
-[ Uniform Reference Grid Tensor ] 
-            │
-            ▼  (Fourier Neural Operator Backbone)
-[ Reference Space Predictions ] (u_x, u_y, p, ν_t)
-            │
-            ▼  (Pullback Transform via Chain Rule & Jacobians)
-[ Physical Frame Predictions & Loss Computation ] ──> Total Loss (L_data + L_pde)
----
-
 ## Mathematical Foundations & Loss Objectives
 
 Geo-PINO is optimized using a composite loss function balancing empirical data fidelity ($L^2$ fields) with structural PDE residuals:
@@ -95,25 +81,6 @@ python evaluate.py --config configs/base_config.yaml --checkpoint weights/geopin
 3. **Turbulence Closure Epistemic Uncertainty:** Output fields inherit the time-averaged steady-state approximations of the Spalart-Allmaras turbulence closure present in the baseline data.
 
 ---
-## Structural Overview
-├── configs/                  # Structured YAML files managing runtime training states
-├── data/                     # Data pre-processing utilities and pipeline targets
-├── docs/                     # Comprehensive scientific documentation
-│   ├── assets/               # Export targets for analytical graphics, plots, and maps
-│   └── Mathematical_Foundations.md  # Detailed latex derivations of Jacobians
-├── models/                   # Modular neural definitions
-│   ├── fno_block.py          # Pure Spectral Convolution layer definitions
-│   ├── mapping.py            # Diffeomorphic Grid Mapping networks
-│   └── geopino.py            # Combined network orchestration
-├── utils/                    # Scientific auxiliary scripts
-│   ├── derivatives.py        # Automatic differentiation and Jacobian Pullback calculations
-│   ├── fluid_losses.py       # RANS and Continuity PDE loss equations
-│   └── data_loader.py        # Customized tensor layout streaming routines
-├── evaluate.py               # Documented script for test validation metrics
-├── train.py                  # Main structured pipeline entry point
-└── LICENSE                   # Open-source MIT License
----
-
 ## Citation
 @article{geopino2026,
   author       = {Dosanbekov, Dias and Altai, Abilkair},
