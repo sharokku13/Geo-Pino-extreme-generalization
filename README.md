@@ -45,13 +45,12 @@ $$\mathcal{L}_{\text{PDE}} = \| \mathcal{R}_{\text{mass}} \|_{L^2}^2 + \| \mathc
 ### Double Out-of-Distribution (OOD) Generalization
 Models were trained on low-frequency symmetric shapes and evaluated under simultaneous geometric extrapolation (unseen asymmetric airfoils) and aerodynamic regime shifts (deep stall boundaries, $\alpha \ge 18.67^\circ$, at $Re \approx 2 \times 10^6$).
 
-| Model Architecture | Velocity Relative $L_2$ | Pressure Relative $L_2$ | Inference Time | Physical Consistency |
-| :--- | :---: | :---: | :---: | :---: |
+| Model Architecture | Velocity ($U_x$) Relative $L_2$ | Pressure Relative $L_2$ | Inference Time | Physical Consistency |
+| :--- | :---: | :---: | :---: | :--- |
 | Standard FNO | $14.28\%$ | $18.92\%$ | **2.8 ms** | Violates Continuity |
-| U-Net Baseline | $9.41\%$ | $11.05\%$ | 5.2 ms | Unstable Boundaries |
-| **Geo-PINO (Ours)** | **3.10%** | **14.78%** | **4.8 ms** | **Strictly Constrained** |
+| U-Net Baseline | $9.41\%$ | **11.05%** | 5.2 ms | Unstable Boundaries |
+| **Geo-PINO (Ours)** | **3.10%** | $14.78\%$ | 4.8 ms | **Strictly Constrained** |
 | OpenFOAM (CFD) | — | — | 142.5 s | Exact (Converged) |
-
 ---
 
 ## Quick Start & Installation
@@ -91,4 +90,3 @@ python evaluate.py --config configs/base_config.yaml --checkpoint weights/geopin
   doi          = {10.5281/zenodo.XXXXXX},
   url          = {[https://github.com/sharokku13/Geo-Pino-extreme-generalization](https://github.com/sharokku13/Geo-Pino-extreme-generalization)}
 }
-```
