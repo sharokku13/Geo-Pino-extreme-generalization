@@ -3,92 +3,119 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
-[![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.XXXXXX-blue.svg)](https://zenodo.org/)
 
-> **Paper:** Aerodynamic Generalization Limits of Geometry-Adaptive Physics-Informed Neural Operators under Extreme Regime Shifts (Dosanbekov & Altai, 2026).
+> **Manuscript:** *Aerodynamic Generalization Limits of Geometry-Adaptive Physics-Informed Neural Operators under Extreme Regime Shifts* (Dosanbekov & Altai, 2026).
+
+---
+## Overview
+
+* **The Challenge:** Traditional Finite Volume Method (FVM) solvers (e.g., OpenFOAM) require intensive, geometry-conforming mesh generation and iterative convergence loops, posing a severe computational bottleneck for high-throughput aerodynamic design optimization.
+* **The Solution:** Geo-PINO decouples geometric complexity from spectral learning. By mapping irregular, body-fitted physical domains into a regularized reference tensor space via a diffeomorphic coordinate transformation network, it allows a Fourier Neural Operator (FNO) backbone to resolve flow fields with significantly reduced computational overhead.
+* **Performance:** Achieves a massive deterministic acceleration factor over single-core FVM solvers (4.80 ms inference latency per spatial configuration) while enforcing physical mass and momentum conservation laws via exact automatic differentiation.
+
+---
+## Framework Architecture
+The data-driven learning and structural PDE optimization pipeline is organized as follows:
+[ Irregular Physical Mesh ] 
+            │
+            ▼  (Diffeomorphic Mapping Φ⁻¹)
+[ Uniform Reference Grid Tensor ] 
+            │
+            ▼  (Fourier Neural Operator Backbone)
+[ Reference Space Predictions ] (u_x, u_y, p, ν_t)
+            │
+            ▼  (Pullback Transform via Chain Rule & Jacobians)
+[ Physical Frame Predictions & Loss Computation ] ──> Total Loss (L_data + L_pde)
+---
+
+## Mathematical Foundations & Loss Objectives
+
+Geo-PINO is optimized using a composite loss function balancing empirical data fidelity ($L^2$ fields) with structural PDE residuals:
+
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{data}} + \lambda \mathcal{L}_{\text{PDE}}$$
+
+### 1. Data-Driven Loss ($L^2$ Norm)
+The empirical target minimizes the point-wise mean squared deviation across predicted velocity, static pressure, and turbulent kinematic viscosity fields:
+
+$$\mathcal{L}_{\text{data}} = \frac{1}{N} \sum_{i=1}^N \left( \| \hat{\mathbf{u}}_i - \mathbf{u}_i \|^2_{L^2} + \| \hat{p}_i - p_i \|^2_{L^2} + \| \hat{\nu}_{t,i} - \nu_{t,i} \|^2_{L^2} \right)$$
+
+### 2. Physics-Informed RANS Residual Pullback
+Let $\mathbf{x} = (x, y)$ define physical coordinates and $\boldsymbol{\xi} = (\xi_1, \xi_2)$ represent uniform reference coordinates. Spatial gradients are mapped via the chain rule using the Jacobian of the diffeomorphism $J_{\Phi}$:
+
+$$\nabla_{\mathbf{x}} f = J_{\Phi}^T \nabla_{\boldsymbol{\xi}} f$$
+
+The incompressible, steady-state RANS mass conservation and momentum equations are enforced in the physical frame to compute the structural regularizer $\mathcal{L}_{\text{PDE}}$:
+
+$$\mathcal{R}_{\text{mass}} = \frac{\partial u_x}{\partial x} + \frac{\partial u_y}{\partial y} = 0$$
+
+$$\mathcal{R}_{\text{mom},x} = u_x\frac{\partial u_x}{\partial x} + u_y\frac{\partial u_x}{\partial y} + \frac{\partial p}{\partial x} - \nu_{\text{eff}}\left(\frac{\partial^2 u_x}{\partial x^2} + \frac{\partial^2 u_x}{\partial y^2}\right) - 2\frac{\partial\nu_{\text{eff}}}{\partial x}\frac{\partial u_x}{\partial x} - \frac{\partial\nu_{\text{eff}}}{\partial y}\left(\frac{\partial u_x}{\partial y} + \frac{\partial u_y}{\partial x}\right) = 0$$
+
+$$\mathcal{L}_{\text{PDE}} = \| \mathcal{R}_{\text{mass}} \|_{L^2}^2 + \| \mathcal{R}_{\text{mom}} \|_{L^2}^2$$
 
 ---
 
-## Abstract
+## Performance Benchmarks
 
-Despite systematic studies of the mathematical limits of generalization for continuous neural operators, concurrent geometric extrapolation and out-of-distribution (OOD) aerodynamic regimes have not been adequately investigated. In this repository, we provide an analytical mathematical framework for geometry-adaptive physics-informed neural operator (Geo-PINO) that undergoes double-OOD testing, that is geometric extrapolation on previously unseen airfoil geometries and OOD aerodynamic regime shifts to extrapolate to the deep stall regions ($\alpha \ge 18.67^\circ$) based on the high-fidelity AirfRANS dataset ($Re \approx 2 \times 10^6$).
+### Double Out-of-Distribution (OOD) Generalization
+Models were trained on low-frequency symmetric shapes and evaluated under simultaneous geometric extrapolation (unseen asymmetric airfoils) and aerodynamic regime shifts (deep stall boundaries, $\alpha \ge 18.67^\circ$, at $Re \approx 2 \times 10^6$).
 
-Through mapping of physical domains into a normalized reference frame using diffeomorphic map, the framework allows FNO architecture to solve RANS equation with greatly reduced computational cost but retains high-fidelity gradient resolution around flow separation region.
-
----
-
-## Methodology & Objective Formulation
-
-The architecture implements a coordinate transformation $\Phi$ mapping the irregular, body-fitted physical mesh onto a uniform reference tensor grid. The fluid operator is evaluated in this invariant latent domain, while physical conservation laws are enforced in the physical space via exact Jacobian automatic differentiation.
-
-### Loss Function Formulation
-
-The framework is optimized using a hybrid objective function balancing empirical data fidelity ($L^2$ norm) with structural PDE residuals:
-
-$$\mathcal{L}_{Total} = \mathcal{L}_{Data} + \lambda \mathcal{L}_{PDE}$$
-
-**1. Data-Driven Loss ($L^2$ Norm):**
-The empirical loss evaluates the deviation between the network predictions $(\hat{u}, \hat{p}, \hat{\nu}_t)$ and the ground truth numerical targets:
-
-$$\mathcal{L}_{Data} = \frac{1}{N} \sum_{i=1}^N \left( \| \hat{u}_i - u_i \|^2_{L^2} + \| \hat{p}_i - p_i \|^2_{L^2} + \| \hat{\nu}_{t,i} - \nu_{t,i} \|^2_{L^2} \right)$$
-
-**2. Physics-Informed RANS Residuals:**
-The steady-state, incompressible RANS residuals are incorporated to enforce mass and momentum conservation. The spatial gradient of the total effective kinematic viscosity is explicitly accounted for:
-
-$$\mathcal{L}_{PDE} = \| \nabla \cdot \hat{u} \|^2_{L^2} + \left\| (\hat{u} \cdot \nabla)\hat{u} + \nabla \hat{p} - \nabla \cdot ((\nu + \hat{\nu}_t)\nabla \hat{u}) \right\|^2_{L^2}$$
-
-*Note: Spatial gradients $\nabla$ are computed with respect to the physical coordinates via the chain rule using the Jacobian of the diffeomorphism $J_{\Phi}$.*
-
----
-
-## Quantitative Evaluation
-
-Models were evaluated under severe OOD conditions, specifically focusing on unseen supercritical airfoil geometries operating at high angles of attack ($\alpha \ge 18.67^\circ$).
-
-**Table 1: Generalization Performance on Unseen OOD Airfoils**
-
-| Model Architecture | RMSE Velocity | RMSE Pressure | $R^2$ Drag | Inference Time (s) |
+| Model Architecture | Velocity Relative $L_2$ | Pressure Relative $L_2$ | Inference Time | Physical Consistency |
 | :--- | :---: | :---: | :---: | :---: |
-| U-Net Baseline | 0.142 | 0.089 | 0.61 | 0.015 |
-| Standard FNO | 0.115 | 0.062 | 0.74 | 0.012 |
-| **Geo-PINO (Ours)** | **0.038** | **0.019** | **0.92** | **0.014** |
-| OpenFOAM (CFD) | — | — | 1.00 | 142.50 |
-
-*Geo-PINO demonstrates a substantial reduction in computational time compared to standard finite-volume CFD solvers (0.014s vs 142.5s) while maintaining strong predictive accuracy for aerodynamic coefficients within deep stall boundaries.*
+| Standard FNO | $14.28\%$ | $18.92\%$ | **2.8 ms** | Violates Continuity |
+| U-Net Baseline | $9.41\%$ | $11.05\%$ | 5.2 ms | Unstable Boundaries |
+| **Geo-PINO (Ours)** | **3.10%** | **14.78%** | **4.8 ms** | **Strictly Constrained** |
+| OpenFOAM (CFD) | — | — | 142.5 s | Exact (Converged) |
 
 ---
 
 ## Quick Start & Installation
-
 ### 1. Environment Setup
-Clone the repository and install the required dependencies:
 git clone [https://github.com/sharokku13/Geo-Pino-extreme-generalization.git](https://github.com/sharokku13/Geo-Pino-extreme-generalization.git)
 cd Geo-Pino-extreme-generalization
 pip install -r requirements.txt
 
 ### 2. Dataset Pipeline
-The framework utilizes the AirfRANS dataset format. Ensure the directory structure aligns with the following layout:
-data/
-└── airfrans/
-    ├── train/
-    ├── test_ood/
-    └── preprocess.py
-
-Execute the pre-processing script to construct the reference computational tensors:
+Preprocess the AirfRANS mesh data into uniform computational grid tensors:
 python data/preprocess.py --source data/airfrans/ --target data/tensor_grid/
 
 ### 3. Execution
-Hyperparameters are managed via YAML configurations in the configs/ directory.
-To initiate training with PDE backpropagation:
+Hyperparameters are managed via YAML configurations in `configs/`.
+
+# Train with active physical constraints
 python train.py --config configs/base_config.yaml
 
-To evaluate a trained checkpoint and generate error mappings:
+# Evaluate checkpoint and export field visualizations
 python evaluate.py --config configs/base_config.yaml --checkpoint weights/geopino_best.pt
 
-### Scope and Limitations
-The current incarnation of the Geo-PINO framework is constrained to work within the following limitations:Incompressible Flow Assumption: The PDE constraint expressions rely on a constant density ($\rho$). Transonic flows, shock waves formation, and compressible energy equations are currently out of scope.Differentiability of the Geometry: The diffeomorphic mapping $\Phi$ needs a continuously differentiable boundary. Geometries that induce coordinate singularities (e.g., multi-element airfoils with sharp slot angles) need a grid-stitching approach which is currently out of scope.Turbulence Modeling Dependencies: The ability to accurately predict the eddy viscosity field ($\nu_t$) is fundamentally tied to the quality of the Spalart-Allmaras turbulence model contained in the AirfRANS ground-truth dataset.CitationIf you use this framework in your work, please cite:
-@article{dosanbekov2026geopino,
+---
+
+## Limitations & Scope
+1. **Incompressible Flow Boundary:** The current formulation assumes constant fluid density ($\rho$). Compressible regimes and shock wave discontinuities are outside the current scope.
+2. **Geometric Differentiability:** The bijective mapping requires smooth, continuous boundary definitions. Sharp interior junctions or multi-element profiles can introduce coordinate singularities during Jacobian evaluation.
+3. **Turbulence Closure Epistemic Uncertainty:** Output fields inherit the time-averaged steady-state approximations of the Spalart-Allmaras turbulence closure present in the baseline data.
+
+---
+## Structural Overview
+├── configs/                  # Structured YAML files managing runtime training states
+├── data/                     # Data pre-processing utilities and pipeline targets
+├── docs/                     # Comprehensive scientific documentation
+│   ├── assets/               # Export targets for analytical graphics, plots, and maps
+│   └── Mathematical_Foundations.md  # Detailed latex derivations of Jacobians
+├── models/                   # Modular neural definitions
+│   ├── fno_block.py          # Pure Spectral Convolution layer definitions
+│   ├── mapping.py            # Diffeomorphic Grid Mapping networks
+│   └── geopino.py            # Combined network orchestration
+├── utils/                    # Scientific auxiliary scripts
+│   ├── derivatives.py        # Automatic differentiation and Jacobian Pullback calculations
+│   ├── fluid_losses.py       # RANS and Continuity PDE loss equations
+│   └── data_loader.py        # Customized tensor layout streaming routines
+├── evaluate.py               # Documented script for test validation metrics
+├── train.py                  # Main structured pipeline entry point
+└── LICENSE                   # Open-source MIT License
+---
+
+## Citation
+@article{geopino2026,
   author       = {Dosanbekov, Dias and Altai, Abilkair},
   title        = {Aerodynamic Generalization Limits of Geometry-Adaptive Physics-Informed Neural Operators under Extreme Regime Shifts},
   year         = {2026},
@@ -97,3 +124,4 @@ The current incarnation of the Geo-PINO framework is constrained to work within 
   doi          = {10.5281/zenodo.XXXXXX},
   url          = {[https://github.com/sharokku13/Geo-Pino-extreme-generalization](https://github.com/sharokku13/Geo-Pino-extreme-generalization)}
 }
+```
