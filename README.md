@@ -12,7 +12,7 @@
 
 ## Abstract
 
-However, systematic studies of the mathematical limits of generalization for continuous neural operators with concurrent geometric extrapolation and OOD aerodynamic regimes have not been adequately studied. In this repository, we provide an analytical mathematical framework for geometry-adaptive physics-informed neural operator (Geo-PINO) that undergoes double-OOD testing, that is geometric extrapolation on previously unseen airfoil geometries and OOD aerodynamic regime shifts to extrapolate to the deep stall regions ($\alpha \ge 18.67^\circ$) based on the high-fidelity AirfRANS dataset ($Re \approx 2 \times 10^6$).
+Despite the systematic studies of the mathematical limits of generalization for continuous neural operators with concurrent geometric extrapolation and OOD aerodynamic regimes have not been adequately studied. In this repository, we provide an analytical mathematical framework for geometry-adaptive physics-informed neural operator (Geo-PINO) that undergoes double-OOD testing, that is geometric extrapolation on previously unseen airfoil geometries and OOD aerodynamic regime shifts to extrapolate to the deep stall regions ($\alpha \ge 18.67^\circ$) based on the high-fidelity AirfRANS dataset ($Re \approx 2 \times 10^6$).
 
 Through mapping of physical domains into a normalized reference frame using diffeomorphic map, the framework allows FNO architecture to solve RANS equation with greatly reduced computational cost but retains high-fidelity gradient resolution around flow separation region.
 
